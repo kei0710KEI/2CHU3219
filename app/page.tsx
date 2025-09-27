@@ -6,6 +6,85 @@ import Link from "next/link";
 import ResultsTable from "@/components/ResultsTable";
 import type { BenchResult } from "@/lib/bench";
 import { resultsToCsv, downloadText } from "@/utils/csv";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
+
+// 各リージョン用の Supabase クライアント
+const supaJP = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL_JP!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY_JP!
+);
+const supaUS = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL_US!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY_US!
+);
+const supaEU = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL_EU!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY_EU!
+);
+
+// ブラウザから直接 CRUD 実行して計測
+async function benchClient(
+  op: "create" | "read" | "update" | "delete",
+  region: "JP" | "US" | "EU",
+  n = 50
+) {
+  const supa = region === "JP" ? supaJP : region === "US" ? supaUS : supaEU;
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const times: number[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const t0 = performance.now();
+
+    if (op === "create") {
+      await supa.from("records_bench").insert({
+        content: `note-${Math.random().toString(36).slice(2)}`,
+        region,
+      });
+    } else if (op === "read") {
+      await supa.from("records_bench").select("*").limit(1);
+    } else if (op === "update") {
+      const { data } = await supa
+        .from("records_bench")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (data?.[0]) {
+        await supa
+          .from("records_bench")
+          .update({ content: "updated" })
+          .eq("id", data[0].id);
+      }
+    } else if (op === "delete") {
+      const { data } = await supa
+        .from("records_bench")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (data?.[0]) {
+        await supa.from("records_bench").delete().eq("id", data[0].id);
+      }
+    }
+
+    const t1 = performance.now();
+    times.push(t1 - t0);
+    await sleep(20);
+  }
+
+  const sorted = [...times].sort((a, b) => a - b);
+  const avg = times.reduce((a, b) => a + b, 0) / times.length;
+  const p95 = sorted[Math.max(0, Math.floor(times.length * 0.95) - 1)];
+
+  return {
+    op,
+    region,
+    avg_ms: Math.round(avg * 10) / 10,
+    p95_ms: Math.round(p95 * 10) / 10,
+    count: n,
+    raw: times,
+  };
+}
 
 const OPS = ["create", "read", "update", "delete"] as const;
 const REGIONS = ["JP", "US", "EU"] as const;
@@ -21,14 +100,8 @@ export default function Home() {
   async function run() {
     setLoading(true);
     try {
-      const res = await fetch("/api/bench", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ op, region, count }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "failed");
-      setItems((prev) => [...prev, json.result]);
+      const result = await benchClient(op, region, count);
+      setItems((prev) => [...prev, result]);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -37,21 +110,14 @@ export default function Home() {
   }
 
   function runMatrix() {
-    // JP/US/EU × 4OP を一気に走らせる簡易ユーティリティ
     (async () => {
       setLoading(true);
       const buf: BenchResult[] = [];
       try {
         for (const r of REGIONS) {
           for (const o of OPS) {
-            const res = await fetch("/api/bench", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ op: o, region: r, count }),
-            });
-            const json = await res.json();
-            if (!json.ok) throw new Error(json.error || "failed");
-            buf.push(json.result);
+            const result = await benchClient(o, r, count);
+            buf.push(result);
           }
         }
         setItems((prev) => [...prev, ...buf]);
