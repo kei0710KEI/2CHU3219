@@ -29,7 +29,7 @@ async function benchClient(
   region: "JP" | "US" | "EU",
   n = 50
 ) {
-  const supa = region === "JP" ? supaJP : region === "US" ? supaUS : supaEU;
+  const supa = region === "JP" ? supaJP : supaUS;
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const times: number[] = [];
@@ -87,7 +87,7 @@ async function benchClient(
 }
 
 const OPS = ["create", "read", "update", "delete"] as const;
-const REGIONS = ["JP", "US", "EU"] as const;
+const REGIONS = ["JP", "US"] as const;
 
 export default function Home() {
   const [op, setOp] = useState<(typeof OPS)[number]>("read");
@@ -146,7 +146,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-8">
               <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                デジタル主権実験
+                卒業論文実験
               </div>
               <div className="hidden md:flex items-center space-x-6">
                 <Link
@@ -258,11 +258,7 @@ export default function Home() {
               >
                 {REGIONS.map((r) => (
                   <option key={r} value={r}>
-                    {r === "JP"
-                      ? "🇯🇵 日本"
-                      : r === "US"
-                      ? "🇺🇸 アメリカ"
-                      : "🇪🇺 ヨーロッパ"}
+                    {r === "JP" ? "🇯🇵 日本" : "🇺🇸 アメリカ"}
                   </option>
                 ))}
               </select>
@@ -318,14 +314,6 @@ export default function Home() {
               ) : (
                 "この条件で実行"
               )}
-            </button>
-
-            <button
-              onClick={runMatrix}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium rounded-lg hover:from-purple-600 hover:to-purple-700 focus:ring-4 focus:ring-purple-200 dark:focus:ring-purple-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-            >
-              JP/US/EU × CRUD 全実行
             </button>
 
             <button
